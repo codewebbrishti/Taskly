@@ -1,5 +1,4 @@
-package com.example.todo_app
-
+package com.brishti.taskly
 import io.flutter.embedding.android.FlutterActivity
 
 class MainActivity : FlutterActivity()

@@ -16,7 +16,7 @@ android {
     namespace = "com.brishti.taskly"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
-    applicationId="com.brishti.taskly"
+    
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -24,6 +24,7 @@ android {
     }
 
     defaultConfig {
+        applicationId="com.brishti.taskly"
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.todo_app"
         // You can update the following values to match your application needs.
