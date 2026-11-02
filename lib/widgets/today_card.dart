@@ -9,7 +9,7 @@ class TodayCard extends StatelessWidget {
     required this.task,
     required this.color,
     required this.onTap,
-    this.width = 200,
+    this.width = double.infinity,
   });
 
   final Task task;
@@ -36,6 +36,7 @@ class TodayCard extends StatelessWidget {
           ],
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -48,18 +49,20 @@ class TodayCard extends StatelessWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              task.description,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withAlpha(190),
-                fontSize: 12,
-                height: 1.35,
+            if (task.description.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                task.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withAlpha(190),
+                  fontSize: 12,
+                  height: 1.35,
+                ),
               ),
-            ),
-            const Spacer(),
+            ],
+            const SizedBox(height: 14),
             Text(
               fmtTime(task.time),
               style: const TextStyle(color: Colors.white, fontSize: 13),

@@ -60,9 +60,6 @@ class _HomePageState extends State<HomePage> {
           listenable: Listenable.merge([store, settings]),
           builder: (context, _) {
             final pal = context.pal;
-            final cardWidth = (MediaQuery.sizeOf(context).width * 0.56)
-                .clamp(170.0, 220.0)
-                .toDouble();
             final now = DateTime.now();
             final todayAll = store.forDate(now);
             final q = query.trim().toLowerCase();
@@ -268,19 +265,19 @@ class _HomePageState extends State<HomePage> {
                     ),
                   )
                 else
-                  SizedBox(
-                    height: 176,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(24, 4, 24, 20),
-                      itemCount: tasks.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 16),
-                      itemBuilder: (_, i) => TodayCard(
-                        width: cardWidth,
-                        task: tasks[i],
-                        color: _cardColors[i % _cardColors.length],
-                        onTap: _openSchedule,
-                      ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < tasks.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 14),
+                          TodayCard(
+                            task: tasks[i],
+                            color: _cardColors[i % _cardColors.length],
+                            onTap: _openSchedule,
+                          ),
+                        ],
+                      ],
                     ),
                   ),
               ],

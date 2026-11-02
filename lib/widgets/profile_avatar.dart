@@ -64,7 +64,7 @@ class ProfileAvatar extends StatelessWidget {
                 height: size,
                 fit: BoxFit.cover,
                 cacheWidth: (size * 3).round(),
-                errorBuilder: (_, __, ___) => _fallback(trimmed),
+                errorBuilder: (_, _, _) => _fallback(trimmed),
               )
             : _fallback(trimmed),
       ),

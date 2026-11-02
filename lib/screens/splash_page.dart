@@ -88,11 +88,10 @@ class _SplashPageState extends State<SplashPage>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
-                        width: 96,
-                        height: 96,
+                        width: 112,
+                        height: 112,
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(28),
+                          borderRadius: BorderRadius.circular(32),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withAlpha(40),
@@ -101,10 +100,22 @@ class _SplashPageState extends State<SplashPage>
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.check_rounded,
-                          color: AppColors.blue,
-                          size: 58,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(32),
+                          child: Image.asset(
+                            'assets/icon/app_icon.png',
+                            width: 112,
+                            height: 112,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.white,
+                              child: const Icon(
+                                Icons.check_rounded,
+                                color: AppColors.blue,
+                                size: 64,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 24),

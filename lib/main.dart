@@ -1,14 +1,36 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'screens/splash_page.dart';
+import 'screens/home_page.dart';
 import 'services/app_settings.dart';
+import 'services/notification_service.dart';
+import 'services/task_store.dart';
 import 'theme/app_colors.dart';
 import 'utils/constants.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load saved settings and tasks before the first screen, so the app opens
+  // straight onto the home screen with no extra splash page.
+  try {
+    await settings.load();
+    await store.load();
+  } catch (_) {}
+
   runApp(const TodoApp());
+
+  // Set up reminders after the first frame so start-up stays fast.
+  unawaited(_setUpReminders());
+}
+
+Future<void> _setUpReminders() async {
+  try {
+    await notifications.init();
+    await store.rescheduleReminders();
+  } catch (_) {}
 }
 
 ThemeData _buildTheme(Brightness brightness) {
@@ -54,7 +76,7 @@ class TodoApp extends StatelessWidget {
               ),
             );
           },
-          home: const SplashPage(),
+          home: const HomePage(),
         );
       },
     );
