@@ -12,3 +12,6 @@ const List<(int?, String)> reminderOptions = [
   (60, '1 hour before'),
   (1440, '1 day before'),
 ];
+
+/// GitHub repo that hosts the releases used by "Check for updates".
+const String githubRepo = 'codewebbrishti/Taskly';

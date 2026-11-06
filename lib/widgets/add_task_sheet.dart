@@ -22,6 +22,14 @@ Future<DateTime?> showAddTaskSheet(BuildContext context, DateTime date) {
   );
 }
 
+/// A sensible default: about 10 minutes from now, rounded up to 5 minutes.
+TimeOfDay _tenMinutesFromNow() {
+  final t = DateTime.now().add(const Duration(minutes: 10));
+  final base = DateTime(t.year, t.month, t.day, t.hour);
+  final d = base.add(Duration(minutes: t.minute - t.minute % 5 + 5));
+  return TimeOfDay(hour: d.hour, minute: d.minute);
+}
+
 class AddTaskSheet extends StatefulWidget {
   const AddTaskSheet({super.key, required this.date});
   final DateTime date;
@@ -38,7 +46,7 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
     widget.date.month,
     widget.date.day,
   );
-  TimeOfDay _time = TimeOfDay.now();
+  TimeOfDay _time = _tenMinutesFromNow();
   bool _calendarOpen = false;
   int? _remind = 0; // minutes before; null = no reminder
   String? _error;
@@ -157,6 +165,17 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
   @override
   Widget build(BuildContext context) {
     final pal = context.pal;
+    final due = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _time.hour,
+      _time.minute,
+    );
+    final remindAt = _remind == null
+        ? null
+        : due.subtract(Duration(minutes: _remind!));
+    final tooLate = remindAt != null && !remindAt.isAfter(DateTime.now());
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -289,6 +308,18 @@ class _AddTaskSheetState extends State<AddTaskSheet> {
                 ),
             ],
           ),
+          if (tooLate) ...[
+            const SizedBox(height: 10),
+            Text(
+              'That reminder time has already passed, so no notification will be sent. '
+              'Pick a later time or a shorter reminder.',
+              style: TextStyle(
+                color: AppColors.red,
+                fontSize: 12.5,
+                height: 1.4,
+              ),
+            ),
+          ],
           const SizedBox(height: 22),
 
           Row(

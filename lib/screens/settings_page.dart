@@ -2,10 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../services/app_settings.dart';
 import '../services/notification_service.dart';
+import '../services/permission_service.dart';
 import '../services/task_store.dart';
 import '../theme/app_colors.dart';
 import '../utils/constants.dart';
@@ -13,16 +16,34 @@ import '../widgets/profile_avatar.dart';
 import '../widgets/responsive_safe_area.dart';
 import '../widgets/round_icon_button.dart';
 import '../widgets/settings_tiles.dart';
+import '../widgets/update_flow.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
 
+  // ───────────── small helpers ─────────────
   void _snack(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
       );
+  }
+
+  Future<void> _info(BuildContext context, String title, String message) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SingleChildScrollView(child: SelectableText(message)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<bool> _confirm(
@@ -52,6 +73,7 @@ class SettingsPage extends StatelessWidget {
     return ok ?? false;
   }
 
+  // ───────────── profile name ─────────────
   Future<void> _editName(BuildContext context) async {
     final name = await showDialog<String>(
       context: context,
@@ -60,130 +82,25 @@ class SettingsPage extends StatelessWidget {
     if (name != null) settings.setUserName(name.trim());
   }
 
-  Future<void> _toggleReminders(BuildContext context, bool on) async {
-    if (on) {
-      final allowed = await notifications.ensurePermission();
-      settings.setRemindersEnabled(true);
-      await store.rescheduleReminders();
-      if (!allowed && context.mounted) {
-        _snack(
-          context,
-          'Allow notifications for $appName in your phone settings',
-        );
-      }
-    } else {
-      settings.setRemindersEnabled(false);
-      await notifications.cancelAll();
-    }
-  }
+  // ───────────── profile photo (asks permission first) ─────────────
+  Future<void> _pickPhoto(BuildContext context, ImageSource source) async {
+    final isCamera = source == ImageSource.camera;
 
-  Future<void> _testNotification(BuildContext context) async {
-    final allowed = await notifications.ensurePermission();
+    // 1) Ask the user for permission before touching the camera / photos.
+    final outcome = isCamera
+        ? await permissions.camera()
+        : await permissions.photos();
     if (!context.mounted) return;
-    if (!allowed) {
-      _snack(
+    if (outcome != PermissionOutcome.granted) {
+      await _explainPermission(
         context,
-        'Allow notifications for $appName in your phone settings',
+        what: isCamera ? 'camera' : 'photos',
+        blocked: outcome == PermissionOutcome.blocked,
       );
       return;
     }
-    await notifications.showTest();
-    if (!context.mounted) return;
-    _snack(context, 'Test notification sent');
-  }
 
-  Future<void> _clearCompleted(BuildContext context) async {
-    if (store.completedCount == 0) {
-      _snack(context, 'No completed tasks to clear');
-      return;
-    }
-    final ok = await _confirm(
-      context,
-      title: 'Clear completed tasks?',
-      message:
-          'This removes ${store.completedCount} completed task(s). It can’t be undone.',
-      action: 'Clear',
-    );
-    if (!ok || !context.mounted) return;
-    store.clearCompleted();
-    _snack(context, 'Completed tasks cleared');
-  }
-
-  Future<void> _deleteAll(BuildContext context) async {
-    if (!store.hasAny) {
-      _snack(context, 'You don’t have any tasks yet');
-      return;
-    }
-    final ok = await _confirm(
-      context,
-      title: 'Delete all tasks?',
-      message:
-          'Every task will be removed from this device. It can’t be undone.',
-      action: 'Delete all',
-    );
-    if (!ok || !context.mounted) return;
-    store.clearAll();
-    _snack(context, 'All tasks deleted');
-  }
-
-  void _showHelp(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('How it works'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('• Tap + to add a task for a day.'),
-            SizedBox(height: 8),
-            Text(
-              '• Open See All, then pick a day in the week strip to plan ahead.',
-            ),
-            SizedBox(height: 8),
-            Text('• Tap a task to move it from To-Do to In progress to Done.'),
-            SizedBox(height: 8),
-            Text('• Swipe a task left to delete it.'),
-            SizedBox(height: 8),
-            Text(
-              '• Use the circles on the home screen to filter today’s tasks.',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAbout(BuildContext context) {
-    showAboutDialog(
-      context: context,
-      applicationName: appName,
-      applicationVersion: appVersion,
-      applicationIcon: Container(
-        width: 48,
-        height: 48,
-        decoration: BoxDecoration(
-          color: AppColors.blue,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: const Icon(Icons.check_rounded, color: Colors.white, size: 30),
-      ),
-      children: const [
-        SizedBox(height: 12),
-        Text(
-          'A simple to-do planner. Your tasks and settings are stored on this device.',
-        ),
-      ],
-    );
-  }
-
-  Future<void> _pickPhoto(BuildContext context, ImageSource source) async {
+    // 2) Permission granted: open the camera / gallery.
     try {
       final picked = await ImagePicker().pickImage(
         source: source,
@@ -201,11 +118,41 @@ class SettingsPage extends StatelessWidget {
       if (!context.mounted) return;
       _snack(
         context,
-        source == ImageSource.camera
-            ? 'Couldn’t open the camera'
-            : 'Couldn’t open your photos',
+        isCamera ? 'Couldn’t open the camera' : 'Couldn’t open your photos',
       );
     }
+  }
+
+  Future<void> _explainPermission(
+    BuildContext context, {
+    required String what,
+    required bool blocked,
+  }) async {
+    if (!blocked) {
+      _snack(context, 'Allow access to your $what to choose a profile photo.');
+      return;
+    }
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Permission needed'),
+        content: Text(
+          '$appName can’t use your $what because access was turned off. '
+          'You can allow it in your phone’s app settings.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Open settings'),
+          ),
+        ],
+      ),
+    );
+    if (open == true) await openAppSettings();
   }
 
   void _showPhotoSheet(BuildContext context) {
@@ -282,6 +229,171 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  // ───────────── reminders ─────────────
+  Future<void> _toggleReminders(BuildContext context, bool on) async {
+    if (on) {
+      final allowed = await notifications.ensurePermission();
+      settings.setRemindersEnabled(true);
+      await store.rescheduleReminders();
+      if (!allowed && context.mounted) {
+        _snack(
+          context,
+          'Allow notifications for $appName in your phone settings',
+        );
+      }
+    } else {
+      settings.setRemindersEnabled(false);
+      await notifications.cancelAll();
+    }
+  }
+
+  Future<void> _allowExactTiming(BuildContext context) async {
+    if (await notifications.canScheduleExact()) {
+      if (!context.mounted) return;
+      _snack(context, 'Exact reminder timing is already allowed');
+      return;
+    }
+    await notifications.requestExactPermission();
+    if (!context.mounted) return;
+    _snack(context, 'Allow “Alarms & reminders”, then reopen the app');
+  }
+
+  Future<void> _testNow(BuildContext context) async {
+    final allowed = await notifications.ensurePermission();
+    if (!context.mounted) return;
+    if (!allowed) {
+      await _info(
+        context,
+        'Notifications are blocked',
+        'Open your phone’s Settings → Apps → $appName → Notifications and turn them on.',
+      );
+      return;
+    }
+    final error = await notifications.showTest();
+    if (!context.mounted) return;
+    if (error == null) {
+      _snack(context, 'Test notification sent');
+    } else {
+      await _info(context, 'Notification failed', error);
+    }
+  }
+
+  Future<void> _testScheduled(BuildContext context) async {
+    final allowed = await notifications.ensurePermission();
+    if (!context.mounted) return;
+    if (!allowed) {
+      _snack(context, 'Allow notifications for $appName first');
+      return;
+    }
+    final error = await notifications.scheduleTest(seconds: 10);
+    final exact = await notifications.canScheduleExact();
+    if (!context.mounted) return;
+    if (error != null) {
+      await _info(context, 'Scheduling failed', error);
+      return;
+    }
+    _snack(
+      context,
+      exact ? 'Scheduled. Wait about 10 seconds (you can lock the screen).' : 'Scheduled, but without exact timing it may arrive a few minutes late.',
+    );
+  }
+
+  // ───────────── data ─────────────
+  Future<void> _clearCompleted(BuildContext context) async {
+    if (store.completedCount == 0) {
+      _snack(context, 'No completed tasks to clear');
+      return;
+    }
+    final ok = await _confirm(
+      context,
+      title: 'Clear completed tasks?',
+      message:
+          'This removes ${store.completedCount} completed task(s). It can’t be undone.',
+      action: 'Clear',
+    );
+    if (!ok || !context.mounted) return;
+    store.clearCompleted();
+    _snack(context, 'Completed tasks cleared');
+  }
+
+  Future<void> _deleteAll(BuildContext context) async {
+    if (!store.hasAny) {
+      _snack(context, 'You don’t have any tasks yet');
+      return;
+    }
+    final ok = await _confirm(
+      context,
+      title: 'Delete all tasks?',
+      message:
+          'Every task will be removed from this device. It can’t be undone.',
+      action: 'Delete all',
+    );
+    if (!ok || !context.mounted) return;
+    store.clearAll();
+    _snack(context, 'All tasks deleted');
+  }
+
+  // ───────────── help & about ─────────────
+  void _showHelp(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('How it works'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('• Tap + to add a task for a day.'),
+            SizedBox(height: 8),
+            Text(
+              '• Open See All, then pick a day in the week strip to plan ahead.',
+            ),
+            SizedBox(height: 8),
+            Text('• Tap a task to move it from To-Do to In progress to Done.'),
+            SizedBox(height: 8),
+            Text('• Swipe a task left to delete it.'),
+            SizedBox(height: 8),
+            Text(
+              '• Use the circles on the home screen to filter today’s tasks.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAbout(BuildContext context) async {
+    final version = (await PackageInfo.fromPlatform()).version;
+    if (!context.mounted) return;
+    showAboutDialog(
+      context: context,
+      applicationName: appName,
+      applicationVersion: version,
+      applicationIcon: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: AppColors.blue,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: const Icon(Icons.check_rounded, color: Colors.white, size: 30),
+      ),
+      children: const [
+        SizedBox(height: 12),
+        Text(
+          'A simple to-do planner. Your tasks and settings are stored on this device.',
+        ),
+      ],
+    );
+  }
+
+  // ───────────── build ─────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -457,11 +569,25 @@ class SettingsPage extends StatelessWidget {
                           _toggleReminders(context, !settings.remindersEnabled),
                     ),
                     SettingsTile(
+                      icon: Icons.alarm_on_rounded,
+                      color: AppColors.amber,
+                      title: 'Exact reminder timing',
+                      subtitle: 'Allow this so reminders arrive on time',
+                      onTap: () => _allowExactTiming(context),
+                    ),
+                    SettingsTile(
                       icon: Icons.send_rounded,
                       color: AppColors.blue,
                       title: 'Send a test notification',
-                      subtitle: 'Check that reminders work on this phone',
-                      onTap: () => _testNotification(context),
+                      subtitle: 'Shows one right now',
+                      onTap: () => _testNow(context),
+                    ),
+                    SettingsTile(
+                      icon: Icons.timer_outlined,
+                      color: AppColors.green,
+                      title: 'Test a scheduled reminder',
+                      subtitle: 'Arrives in about 10 seconds',
+                      onTap: () => _testScheduled(context),
                     ),
                   ],
                 ),
@@ -489,8 +615,15 @@ class SettingsPage extends StatelessWidget {
                 const SizedBox(height: 24),
 
                 SettingsSection(
-                  title: 'Help & about',
+                  title: 'App',
                   children: [
+                    SettingsTile(
+                      icon: Icons.system_update_rounded,
+                      color: AppColors.green,
+                      title: 'Check for updates',
+                      subtitle: 'Download and install the newest version',
+                      onTap: () => checkForUpdates(context),
+                    ),
                     SettingsTile(
                       icon: Icons.lightbulb_outline_rounded,
                       color: AppColors.amber,
@@ -501,24 +634,38 @@ class SettingsPage extends StatelessWidget {
                       icon: Icons.info_outline_rounded,
                       color: AppColors.blue,
                       title: 'About $appName',
-                      subtitle: 'Version $appVersion',
                       onTap: () => _showAbout(context),
                     ),
                   ],
                 ),
                 const SizedBox(height: 28),
 
-                Center(
-                  child: Text(
-                    '$appName v$appVersion',
-                    style: TextStyle(color: pal.muted, fontSize: 12),
-                  ),
-                ),
+                const Center(child: _VersionText()),
               ],
             );
           },
         ),
       ),
+    );
+  }
+}
+
+// ───────────────────── Version footer ─────────────────────
+class _VersionText extends StatelessWidget {
+  const _VersionText();
+
+  @override
+  Widget build(BuildContext context) {
+    final pal = context.pal;
+    return FutureBuilder<PackageInfo>(
+      future: PackageInfo.fromPlatform(),
+      builder: (context, snapshot) {
+        final v = snapshot.data?.version;
+        return Text(
+          v == null ? appName : '$appName v$v',
+          style: TextStyle(color: pal.muted, fontSize: 12),
+        );
+      },
     );
   }
 }
@@ -529,53 +676,61 @@ class _ThemeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pal = context.pal;
-    const choices = [
-      (ThemeMode.system, Icons.brightness_auto_rounded, 'System'),
-      (ThemeMode.light, Icons.light_mode_rounded, 'Light'),
-      (ThemeMode.dark, Icons.dark_mode_rounded, 'Dark'),
-    ];
+    // Listens to the settings itself. Without this, the highlight did not
+    // refresh when the choice changed but the screen colours stayed the same
+    // (for example System → Dark on a phone that is already in dark mode).
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) {
+        final pal = context.pal;
+        const choices = [
+          (ThemeMode.system, Icons.brightness_auto_rounded, 'System'),
+          (ThemeMode.light, Icons.light_mode_rounded, 'Light'),
+          (ThemeMode.dark, Icons.dark_mode_rounded, 'Dark'),
+        ];
 
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const IconBadge(
-                icon: Icons.palette_outlined,
-                color: AppColors.blue,
-              ),
-              const SizedBox(width: 14),
-              Text(
-                'Theme',
-                style: TextStyle(
-                  color: pal.ink,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              for (var i = 0; i < choices.length; i++) ...[
-                if (i > 0) const SizedBox(width: 10),
-                Expanded(
-                  child: _ThemeChoice(
-                    icon: choices[i].$2,
-                    label: choices[i].$3,
-                    selected: settings.themeMode == choices[i].$1,
-                    onTap: () => settings.setThemeMode(choices[i].$1),
+              Row(
+                children: [
+                  const IconBadge(
+                    icon: Icons.palette_outlined,
+                    color: AppColors.blue,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 14),
+                  Text(
+                    'Theme',
+                    style: TextStyle(
+                      color: pal.ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  for (var i = 0; i < choices.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 10),
+                    Expanded(
+                      child: _ThemeChoice(
+                        icon: choices[i].$2,
+                        label: choices[i].$3,
+                        selected: settings.themeMode == choices[i].$1,
+                        onTap: () => settings.setThemeMode(choices[i].$1),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
